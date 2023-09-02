@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Long Polling</title>
+  <link rel="stylesheet" href="bootstrap.min.css">
+  <link rel="stylesheet" href="bootstrap-icons.css">
+  <style>
+    .container {
+      margin-top: 0.7rem;
+      width: 40vw;
+    }
+  </style>
+</head>
+<body>
+
+  <main class="container">
+    <div class="card">
+      <div class="card-body">
+        <form name="entrar">
+          <label class="form-label">Nome de usuário</label>
+          <input type="text" class="form-control mb-3" name="nome">
+          <div class="d-flex">
+            <button class="btn btn-success ms-auto" type="submit">
+              Entrar
+            </button>
+          </div>
+          <div class="alert alert-danger mt-3 mb-0 d-none" id="alerta">
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="bootstrap.bundle.min.js"></script>
+  <script>
+
+    if (localStorage.getItem('long-polling-nome') !== null) {
+      location.assign('chat.html')
+    }
+
+    const form = document.forms.entrar
+    const alerta = document.querySelector('#alerta')
+
+    function alertar(msg) {
+      alerta.classList.remove('d-none')
+      alerta.innerText = msg
+    }
+
+    form.nome.addEventListener('keydown', () => {
+      alerta.classList.add('d-none')
+    })
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+
+      const nome = String(form.nome.value).trim()
+      if (nome.length == 0) {
+        alertar('Nome não pode ficar vazio')
+        return
+      }
+      localStorage.setItem('long-polling-nome', nome)
+      location.assign('chat.html')
+    })
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Long Polling</title>
+  <link rel="stylesheet" href="bootstrap.min.css">
+  <link rel="stylesheet" href="bootstrap-icons.css">
+  <style>
+    main {
+      margin: 0 auto;
+      width: calc(100vw - 4rem) !important;
+      margin-top: 1rem;
+    }
+    .side-item {
+      background-color: white;
+      padding: 0.7rem;
+      display: flex;
+      gap: 0.7rem;
+      flex-direction: row;
+      align-items: center;
+    }
+    .side-item.selected {
+      background-color: #e4fff3;
+    }
+    .side-item.highlight {
+      background-color: #fffbc3;
+    }
+    .side-item.clickable {
+      cursor: pointer;
+    }
+    .side-item {
+      border-bottom: var(--bs-border-width) var(--bs-border-style) var(--bs-border-color) !important
+    }
+    #itens-conversas {
+      overflow-y: auto;
+      background-color: var(--bs-light);
+    }
+    #container-mensagem {
+      background-color: var(--bs-light);
+    }
+    #textarea-mensagem {
+      resize: none
+    }
+    .painel-conversa {
+      overflow-y: auto;
+      max-height: 100%;
+    }
+    #paineis-conversas {
+      height: 70vh;
+    }
+    #paineis-info {
+      background-color: var(--bs-light);
+      border-bottom: var(--bs-border-width) var(--bs-border-style) var(--bs-border-color) !important
+    }
+  </style>
+</head>
+<body>
+
+  <main class="d-flex flex-column gap-3">
+    <span>
+      Você está conectado como <b id="conectado-nome"></b>.
+      <a href="#" id="link-sair">Sair</a>
+    </span>
+    <div class="card flex-fill">
+      <div class="card-body d-flex flex-row p-0">
+
+        <div class="d-flex flex-column flex-shrink border-end" id="itens-conversas">
+          <div class="side-item">
+            <input type="text" class="form-control" id="nome-adicionar">
+            <div class="ms-auto">
+              <button class="btn btn-outline-success" id="btn-adicionar">
+                <i class="bi bi-person-plus-fill"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex-fill d-flex flex-column">
+          <div class="px-3 py-2" id="paineis-info">
+            Nenhuma conversa selecionada
+          </div>
+          <div class="flex-fill" id="paineis-conversas">
+          </div>
+          <div id="container-mensagem">
+            <form name="mensagem" class="p-3 border-top d-flex flex-row gap-3">
+              <textarea id="textarea-mensagem" rows="1" class="form-control"></textarea>
+              <button class="flex-shrink btn btn-primary" type="submit">
+                Enviar
+              </button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+
+    </div>
+  </main>
+
+  <template id="tmpl-item-conversa">
+    <div class="side-item item-conversa clickable">
+      <span class="conversa-nome"></span>
+      <div class="ms-auto">
+        <button class="btn btn-danger conversa-btn-remover">
+          <i class="bi bi-person-x-fill"></i>
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tmpl-painel-conversa">
+    <div class="painel-conversa p-3 d-none"></div>
+  </template>
+
+  <template id="tmpl-mensagem">
+    <div class="d-flex flex-row gap-3 align-items-top">
+      <span class="text-muted mensagem-direcao"></span>
+      <span class="flex-1 mensagem-horario text-muted"></span>
+      <b class="mensagem-usuario"></b>
+      <span class="mensagem-texto"></span>
+    </div>
+  </template>
+
+
+  <script src="bootstrap.bundle.min.js"></script>
+  <script src="client.js"></script>
+  <script>
+    function qs(s, e=null) {
+      e ??= document
+      if (!e) throw Error('Elemento não encontrado: ' + e)
+      let x = null
+      try {
+        x = e.querySelector(s)
+      } catch (err) {
+        console.error('Exceção ao buscar '+s+' dentro do elemento '+e, err)
+        return false
+      }
+      if (!x) throw Error('qs não encontrou elemento correspondente a '+s+' dentro do elemento '+e)
+      return x
+    }
+
+    function qsa(s, e=null) {
+      e ??= document
+      if (!e) throw Error('Elemento não encontrado: ' + e)
+      let x = null
+      try {
+        x = e.querySelectorAll(s)
+      } catch (err) {
+        console.error('Exceção ao buscar '+s+' dentro do elemento '+e, err)
+        return false
+      }
+      if (!x) throw Error('qsa não encontrou elemento correspondente a '+s+' dentro do elemento '+e)
+      return x
+    }
+
+    const nomeConectado = localStorage.getItem('long-polling-nome')
+    if (nomeConectado === null) {
+      location.assign('index.html')
+    }
+
+    let conversaSelecionada = null
+    const conversas = new Map()
+
+    qs('#conectado-nome').innerText = nomeConectado
+
+    qs('#link-sair').addEventListener('click', ev => {
+      ev.preventDefault()
+      localStorage.removeItem('long-polling-nome')
+      location.assign('index.html')
+    })
+
+    qs('#nome-adicionar').addEventListener('keydown', ev => {
+      if (ev.key != 'Enter') return
+      submitUsuario()
+    })
+    qs('#btn-adicionar').addEventListener('click', () => {
+      submitUsuario()
+    })
+
+    const formMensagem = document.forms.mensagem
+
+    qs('#textarea-mensagem').addEventListener('keydown', ev => {
+      if (ev.key == 'Enter' && !ev.shiftKey) {
+        ev.preventDefault()
+        submitMensagem()
+      }
+    })
+
+
+    formMensagem.addEventListener('submit', async ev => {
+      ev.preventDefault()
+      submitMensagem()
+    })
+
+    function submitUsuario() {
+      const nome = String(qs('#nome-adicionar').value)
+      if (nome.length == 0) return;
+      qs('#nome-adicionar').value = '';
+
+      const metodos = adicionarConversa(nome)
+      conversas.set(nome, metodos)
+    }
+
+    async function submitMensagem() {
+      if (conversaSelecionada === null) {
+        console.warn('Nenhuma conversa selecionada')
+        return
+      }
+      const textarea = qs('#textarea-mensagem')
+      const texto = String(textarea.value)
+      textarea.value = ''
+
+      const metodos = conversas.get(conversaSelecionada)
+      if (metodos === null) {
+        console.warn('Conversa não encontrada')
+        return
+      }
+      const data = new Date()
+      if (await enviarMensagem(nomeConectado, conversaSelecionada, texto)) {
+        metodos.adicionarMensagem(nomeConectado, texto, data, '>')
+      }
+    }
+
+    function adicionarConversa(nome) {
+      if (conversas.has(nome)) return;
+
+      const item   = qs('#tmpl-item-conversa').content.firstElementChild.cloneNode(true)
+      const painel = qs('#tmpl-painel-conversa').content.firstElementChild.cloneNode(true)
+
+      qs('.conversa-nome', item).innerText = nome
+      qs('.conversa-btn-remover', item).addEventListener('click', ev => {
+        ev.stopPropagation()
+        item.remove()
+        painel.remove()
+        conversas.delete(nome)
+        if (conversaSelecionada == nome) {
+          qs('#paineis-info').innerText = 'Nenhuma conversa selecionada'
+          conversaSelecionada = null
+        }
+      })
+
+      qs('#itens-conversas').append(item)
+      qs('#paineis-conversas').append(painel)
+
+      item.addEventListener('click', () => {
+        conversaSelecionada = nome
+        qs('#paineis-info').innerHTML = `Você está conversando com <b>${nome}</b>`
+        qsa('.painel-conversa').forEach(p => {
+          if (p == painel) p.classList.remove('d-none')
+          else p.classList.add('d-none')
+        })
+        qsa('.item-conversa').forEach(i => {
+          if (i == item) {
+            i.classList.remove('highlight')
+            i.classList.add('selected')
+          }
+          else i.classList.remove('selected')
+        })
+      })
+
+      function adicionarMensagem(usuario, texto, data, direcao) {
+        const mensagem = qs('#tmpl-mensagem').content.firstElementChild.cloneNode(true)
+        qs('.mensagem-direcao', mensagem).innerText = direcao
+        qs('.mensagem-horario', mensagem).innerText = formatarHorario(data)
+        qs('.mensagem-usuario', mensagem).innerText = usuario
+        qs('.mensagem-texto', mensagem).innerText = texto
+        painel.append(mensagem)
+        painel.scrollTo({
+          top: painel.scrollHeight,
+          behavior: 'smooth',
+        })
+      }
+
+      return {
+        item,
+        painel,
+        adicionarMensagem,
+      }
+    }
+
+    function receberMensagem(de, texto, data) {
+      let conversa = conversas.get(de)
+      if (!conversa) {
+        conversa = adicionarConversa(de)
+        conversas.set(de, conversa)
+      }
+      if (de !== conversaSelecionada) {
+        conversa.item.classList.add('highlight')
+      }
+      conversa.adicionarMensagem(de, texto, data, '<')
+    }
+
+    function formatarHorario(data) {
+      const h = String(data.getHours()).padStart(2, '0')
+      const m = String(data.getMinutes()).padStart(2, '0')
+      const s = String(data.getSeconds()).padStart(2, '0')
+      return `${h}:${m}:${s}`
+    }
+
+    poll(nomeConectado, mensagens => {
+      for (const {origem, texto, data} of mensagens) {
+        receberMensagem(origem, texto, new Date(data))
+      }
+    })
+  </script>
+</body>
+</html>
