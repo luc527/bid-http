@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <link rel="stylesheet" href="bootstrap-icons.css">
+    <title>Feed Rede Social</title>
+</head>
+<body>
+
+    <main class="container mt-3 pb-5 d-flex flex-column gap-2">
+
+    </main>
+
+    <template id="tmpl-item-feed">
+        <div class="border rounded border-secondary-subtle bg-light d-flex flex-row gap-3 align-items-center p-2">
+            <span
+              class="fs-3 rounded-circle bg-primary-subtle d-flex flex-row align-items-center justify-content-center"
+              style="min-width: 3rem; max-width: 3rem; width: 3rem; min-height: 3rem; max-height: 3rem; height: 3rem;"
+            >
+                <i class="bi icone text-primary"></i>
+            </span>
+            <span class="text-secondary texto">
+            </span>
+        </div>
+    </template>
+
+
+    <script src="bootstrap.bundle.min.js"></script>
+    <script src="/client.js"></script>
+    <script>
+        const usuario = 'lucas'
+        conectarEventSource(usuario)
+    </script>
+</body>
+</html>
