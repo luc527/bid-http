@@ -3,7 +3,8 @@
     "strict": true,
     "outDir": "dist",
     "allowSyntheticDefaultImports": true,
-    "module": "ES2022"
+    "module": "ESNext",
+    "moduleResolution": "Node"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
 }

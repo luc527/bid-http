@@ -4,7 +4,7 @@ import * as leiloes from './leiloes.js'
 
 const app = express()
 
-app.use(express.static('./dist/public'))
+app.use(express.static('./public'))
 app.use(bodyParser.json())
 
 // ------------------------------
