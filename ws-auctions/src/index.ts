@@ -1,22 +1,23 @@
 import express, { NextFunction, Request, Response } from 'express'
 import bodyParser from 'body-parser'
-import * as leiloes from './leiloes.js'
+import Leiloes, {CriarLeilaoDTO} from './leiloes.js'
 
 const app = express()
 
 app.use(express.static('./public'))
 app.use(bodyParser.json())
 
+const gLeiloes = new Leiloes()
+
 // ------------------------------
 
 app.post('/leilao', (req, res, next) => {
   try {
-    const {ok, error, value: maybeLeilao} = leiloes.parseLeilao(req.body)
-    if (!ok) {
-      res.status(400).json({error})
+    const parsed = Leiloes.parse(req.body)
+    if (!parsed.ok) {
+      res.status(400).json({error: parsed.error})
     } else {
-      const leilao = maybeLeilao as leiloes.CriarLeilaoDTO
-      const {codigo, token} = leiloes.criar(leilao)
+      const {codigo, token} = gLeiloes.criar(parsed.value as CriarLeilaoDTO)
       res.status(201).json({
         codigoLeilao: codigo,
         token
@@ -28,7 +29,7 @@ app.post('/leilao', (req, res, next) => {
 })
 
 app.get('/leilao/abertos', (req, res) => {
-  res.status(200).json(leiloes.abertos())
+  res.status(200).json(gLeiloes.abertos)
 })
 
 // ------------------------------
