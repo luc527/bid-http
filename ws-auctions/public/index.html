@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leilões</title>
+  <link rel="stylesheet" href="bootstrap.min.css">
+  <link rel="stylesheet" href="bootstrap-icons.css">
+</head>
+<body>
+  <main class="container mt-3 d-flex flex-column flex-lg-row gap-3">
+    <div class="card" style="flex: 1">
+      <div class="card-header">
+        Criar leilão
+      </div>
+      <div class="card-body">
+
+        <form name="criar_leilao" class="d-flex flex-column gap-3">
+          <div class="row">
+            <label class="col-lg-3 col-form-label">Nome de usuário</label>
+            <div class="col-lg-9">
+              <input type="text" class="form-control" name="nome_usuario">
+            </div>
+          </div>
+  
+          <div class="row">
+            <label class="col-lg-3 col-form-label">Nome do item</label>
+            <div class="col-lg-9">
+              <input type="text" class="form-control" name="nome_item">
+            </div>
+          </div>
+  
+          <div class="row">
+            <label class="col-lg-3 col-form-label">Preço inicial</label>
+            <div class="col-lg-9">
+              <input type="number" min=0.00" step="0.01" class="form-control" name="preco_inicial">
+            </div>
+          </div>
+  
+          <div class="d-flex flex-row mt-auto">
+            <button class="ms-auto btn btn-success" type="submit">
+              <i class="bi bi-plus-circle"></i>&nbsp;
+              Criar
+            </button>
+          </div>
+        </form>
+
+
+      </div>
+    </div>
+    <div class="card" style="flex: 1">
+      <div class="card-header">
+        Participar de leilão
+      </div>
+      <div class="card-body">
+
+        <form class="d-flex flex-column gap-3 h-100" name="entrar_leilao" method="GET" action="leilao.html">
+          <input type="hidden" name="modo" value="participante">
+
+          <div class="row">
+            <label class="col-lg-3 col-form-label">Nome de usuário</label>
+            <div class="col-lg-9">
+              <input type="text" class="form-control" name="nome_usuario">
+            </div>
+          </div>
+  
+          <div class="row">
+            <label class="col-lg-3 col-form-label">Código do leilão</label>
+            <div class="col-lg-9">
+              <input type="number" min=1 step=1 class="form-control" name="codigo_leilao">
+            </div>
+          </div>
+  
+          <div class="d-flex flex-row mt-auto">
+            <button class="ms-auto btn btn-primary" type="submit">
+              <i class="bi bi-arrow-right"></i>&nbsp;
+              Entrar
+            </button>
+          </div>
+        </form>
+
+
+      </div>
+    </div>
+  </main>
+
+  <script src="bootstrap.bundle.min.js"></script>
+  <script src="common.js"></script>
+  <script>
+    const formCriar = document.forms['criar_leilao']
+
+    formCriar.addEventListener('submit', async ev => {
+      ev.preventDefault()
+      const form = formCriar
+
+      const nomeUsuario = form.nome_usuario.value
+      const nomeItem = form.nome_item.value
+      const precoInicial = form.preco_inicial.value
+
+      try {
+        const {codigoLeilao, token} = await criarLeilao(nomeUsuario, nomeItem, precoInicial)
+        sessionStorage.setItem(chaveTokenLeilao(codigoLeilao), token)
+        location.assign(`leilao.html?modo=dono&codigo_leilao=${codigoLeilao}&nome_usuario=${nomeUsuario}`)
+      } catch (err) {
+        console.error(err)
+      }
+    })
+
+    async function criarLeilao(nomeUsuario, nomeItem, precoInicial) {
+      const body = {nomeUsuario, nomeItem, precoInicial}
+      const data = {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+      const response = await fetch(`${gHost}/leilao`, data)
+      const json = await response.json();
+      if (response.ok) {
+        return json
+      } else {
+        throw new Error(json.error ?? 'Erro inesperado ao criar leilão')
+      }
+    }
+  </script>
+</body>
+</html>
