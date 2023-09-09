@@ -32,14 +32,38 @@ app.get('/leilao/abertos', (req, res) => {
   res.status(200).json(gLeiloes.abertos)
 })
 
+app.get('/leilao/:codigo/validar', (req, res) => {
+  const codigo = Number(req.params.codigo)
+  const token = req.query.token
+  if (typeof token == 'string' && gLeiloes.validar(codigo, token)) {
+    res.status(200).end()
+  } else {
+    res.status(401).end()
+  }
+})
+
+app.get('/leilao/:codigo', (req, res) => {
+  const codigo = Number(req.params.codigo)
+  if (Number.isNaN(codigo)) {
+    res.status(400).json({error: 'Código inválido'})
+    return
+  }
+  const leilao = gLeiloes.find(codigo)
+  if (leilao.ok) {
+    res.status(200).json(leilao.value)
+  } else {
+    res.status(404).json({error: leilao.error})
+  }
+})
+
 // ------------------------------
 
 app.use((req: Request, res: Response, next: NextFunction) => {
-    res.status(404).send('Not Found')
+    res.status(404).json({error:'Not Found'})
 })
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  res.status(500).send('Internal Error')
+  res.status(500).json({error:'Internal Error'})
   console.error(err)
 })
 

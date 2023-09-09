@@ -1,4 +1,4 @@
-import { Result, gerarTokenAleatorio } from "./common.js"
+import { Result, binSearch, gerarTokenAleatorio } from "./common.js"
 
 export type CriarLeilaoDTO = {
   nomeUsuario: string,
@@ -6,28 +6,37 @@ export type CriarLeilaoDTO = {
   precoInicial: number,
 }
 
+type Lance = {
+  nomeUsuario: string,
+  preco: number,
+  feitoEm: Date,
+}
+
 type Leilao = {
   codigo: number,
-  token: string,
   nomeDono: string,
   nomeItem: string,
   precoInicial: number,
   anunciadoEm: Date,
-  finalizadoEm?: Date | null,
+  finalizado?: boolean,
+}
+
+type LeilaoFinalizado = Leilao & {
+  finalizadoEm: Date,
+  lanceGanhador: Lance | null,
 }
 
 export default class Leiloes {
   #proximoCodigo: number = 1
   #abertos: Array<Leilao> = []
-  #finalizados: Array<Leilao> = []
+  #finalizados: Array<LeilaoFinalizado> = []
+  #tokens: Map<number, string> = new Map()
 
   criar(dto: CriarLeilaoDTO): {codigo: number, token: string} {
     const codigo = this.#proximoCodigo++
-    const token = gerarTokenAleatorio()
 
     const leilao = {
       codigo,
-      token,
       nomeDono: dto.nomeUsuario,
       nomeItem: dto.nomeItem,
       precoInicial: dto.precoInicial,
@@ -36,14 +45,39 @@ export default class Leiloes {
 
     this.#abertos.push(leilao)
 
+    const token = gerarTokenAleatorio()
+    this.#tokens.set(codigo, token)
+
     return {codigo, token}
+  }
+
+  find(codigo: number): Result<Readonly<Leilao>> {
+    const cmp = (leilao: Leilao) => codigo - leilao.codigo
+    let value: Leilao | null = null
+
+    if (value = binSearch(this.#abertos, cmp)) {
+      value.finalizado = false
+      return {ok: true, value}
+    }
+    else if (value = binSearch(this.#finalizados, cmp)) {
+      value.finalizado = true
+      return {ok: true, value}
+    }
+    else {
+      return {ok: false, error: 'Leilão não encontrado'}
+    }
+  }
+
+  validar(codigo: number, token: string): boolean {
+    return this.#tokens.has(codigo)
+        && this.#tokens.get(codigo) == token
   }
 
   get abertos(): ReadonlyArray<Leilao> {
     return this.#abertos
   }
 
-  get finalizados(): ReadonlyArray<Leilao> {
+  get finalizados(): ReadonlyArray<LeilaoFinalizado> {
     return this.#finalizados
   }
 

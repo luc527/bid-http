@@ -6,13 +6,209 @@
   <title>Leilão</title>
   <link rel="stylesheet" href="bootstrap.min.css">
   <link rel="stylesheet" href="bootstrap-icons.css">
+  <link rel="stylesheet" href="sweetalert2.min.css">
+  <link rel="stylesheet" href="swal_toast.css">
 </head>
 <body>
-  <main class="container">
-    teste
+  <main class="container mt-3">
+    <div class="card">
+      <div class="card-header">
+        Leilão
+      </div>
+      <div class="card-body d-flex flex-column gap-3">
+
+        <div>
+          <label class="form-label">Item</label>
+          <input type="text" class="form-control" readonly disabled id="nome_item">
+        </div>
+
+        <div class="d-flex flex-row gap-3">
+          <div style="flex: 1">
+            <label class="form-label">Dono</label>
+            <input type="text" class="form-control" readonly disabled id="dono">
+          </div>
+
+          <div style="flex: 1">
+            <label class="form-label">Anunciado em</label>
+            <input type="text" class="form-control" readonly disabled id="anunciado_em">
+          </div>
+
+          <div style="flex: 1">
+            <label class="form-label">Finalizado em</label>
+            <input type="text" class="form-control" readonly disabled id="finalizado_em">
+          </div>
+        </div>
+
+        <div class="d-flex flex-row gap-3" id="container-ganhador">
+          <div style="flex: 1">
+            <label class="form-label">Ganhador</label>
+            <input type="text" class="form-control" readonly disabled id="ganhador-nome">
+          </div>
+
+          <div style="flex: 1">
+            <label class="form-label">Lance</label>
+            <input type="text" class="form-control" readonly disabled id="ganhador-lance">
+          </div>
+        </div>
+
+        <div class="ms-auto">
+          <button class="btn btn-danger" id="btn-finalizar-leilao">Finalizar</button>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card my-3">
+      <div class="card-header">
+        Lances
+      </div>
+      <div class="card-body">
+        <div id="container-lances" class="d-flex flex-column gap-2" style="overflow-y: auto; height: 70vh">
+
+        </div>
+      </div>
+      <div class="card-footer" id="footer-enviar-lance">
+        <div class="row">
+          <label class="col-lg-1 col-form-label">Lance</label>
+          <div class="col-lg-10">
+            <input class="form-control" type="number" min="0.01" step="0.01" id="lance"/>
+          </div>
+          <div class="col-lg-1 mt-lg-0 mt-3">
+            <button class="btn btn-primary w-100" id="enviar">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
+  <template id="tmpl-lance">
+    <div class="bg-light-subtle rounded border border-secondary-subtle d-flex p-2 flex-row gap-3 align-items-center">
+      <small class="feito_em"></small>
+      <span class="nome"></span>
+      <strong class="ms-auto preco fs-5 text-success fw-semibold"></strong>
+    </div>
+  </template>
+
   <script src="bootstrap.bundle.min.js"></script>
+  <script src="sweetalert2.all.min.js"></script>
+  <script src="swal_toast.js"></script>
+  <script src="alertas.js"></script>
   <script src="common.js"></script>
+  <script>
+    const params = new URL(location).searchParams
+
+    const codigoLeilao = Number(params.get('codigo_leilao'))
+    const nomeUsuario = params.get('nome_usuario')
+    const modo = params.get('modo')
+
+    const tmplLance = qs('#tmpl-lance')
+    const containerLances = qs('#container-lances')
+    const containerGanhador = qs('#container-ganhador')
+    const inputLance = qs('#lance')
+    const btnEnviar = qs('#enviar')
+
+    let leilaoFinalizado = false
+
+    hide(containerGanhador)
+
+    if (modo != 'dono' && modo != 'participante') {
+      agendarAlerta({
+        icon: 'error',
+        text: 'Modo inválido'
+      })
+      location.assign('/')
+    }
+
+    const btnFinalizar = qs('#btn-finalizar-leilao')
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        if (modo == 'dono') {
+          const token = sessionStorage.getItem(chaveTokenLeilao(codigoLeilao))
+          const ok = await validarAcessoDono(codigoLeilao, token)
+          if (!ok) {
+            throw new Error('Não é o dono do leilão')
+          }
+        }
+
+        const leilao = await getLeilao(codigoLeilao)
+
+        qs('#nome_item').value = leilao.nomeItem
+        qs('#dono').value = leilao.nomeDono
+        qs('#anunciado_em').value = new Date(leilao.anunciadoEm).toLocaleString()
+
+        toggle(btnFinalizar.parentNode, modo == 'dono')
+        toggle(qs('#footer-enviar-lance'), modo == 'participante')
+
+        if (leilao.finalizado) {
+          const ganhador = leilao.lanceGanhador
+          handleLeilaoFinalizado(ganhador.nomeUsuario, ganhador.preco, leilao.finalizadoEm)
+        }
+
+      } catch (error) {
+        agendarAlerta({
+          icon: 'error',
+          text: error.message
+        })
+        location.assign('/')
+      }
+    })
+
+    async function validarAcessoDono(codigo, token) {
+      const response = await fetch(`${gHost}/leilao/${codigo}/validar?token=${encodeURIComponent(token)}`)
+      return response.ok
+    }
+
+    async function getLeilao(codigo) {
+      const response = await fetch(`${gHost}/leilao/${codigo}`)
+      const json = await response.json()
+      if (response.ok) {
+        return json
+      } else {
+        throw new Error(json?.error ?? 'Erro ao buscar o leilão')
+      }
+    }
+
+    function handleLance(nomeUsuario, preco, feitoEm) {
+      const lance = tmplLance.content.firstElementChild.cloneNode(true)
+      qs('.nome', lance).innerText = nomeUsuario
+      qs('.preco', lance).innerText = gFormatReais.format(preco)
+      qs('.feito_em', lance).innerText = new Date(feitoEm).toLocaleTimeString()
+      containerLances.append(lance)
+      containerLances.scrollTo({
+        top: containerLances.scrollHeight,
+        behavior: 'smooth'
+      })
+    }
+
+    function handleLeilaoFinalizado(nomeGanhador, lanceGanhador, finalizadoEm=null) {
+      // TODO pode ter finalizado sem ganhador
+      if (leilaoFinalizado) return;
+      leilaoFinalizado = true
+
+      inputLance.setAttribute('readonly', '')
+      inputLance.setAttribute('disabled', '')
+      btnEnviar.setAttribute('disabled', '')
+
+      qs('#finalizado_em').value = (finalizadoEm ?? new Date()).toLocaleString()
+      show(containerGanhador)
+      qs('#ganhador-nome').value = nomeGanhador
+      qs('#ganhador-lance').value = gFormatReais.format(lanceGanhador)
+
+      if (modo == 'participante') {
+        if (nomeGanhador == nomeUsuario) {
+          Toast.fire({
+            icon: 'success',
+            text: 'Você ganhou o leilão! Obrigado pela sua participação.'
+          })
+        } else {
+          Toast.fire({
+            icon: 'info',
+            text: 'O leilão acabou. Obrigado pela sua participação!'
+          })
+        }
+      }
+    }
+  </script>
 </body>
 </html>
