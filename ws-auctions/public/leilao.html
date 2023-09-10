@@ -68,15 +68,17 @@
         </div>
       </div>
       <div class="card-footer" id="footer-enviar-lance">
-        <div class="row">
-          <label class="col-lg-1 col-form-label">Lance</label>
-          <div class="col-lg-10">
-            <input class="form-control" type="number" min="0.01" step="0.01" id="lance"/>
+        <form id="form-enviar">
+          <div class="row">
+            <label class="col-lg-1 col-form-label">Lance</label>
+            <div class="col-lg-10">
+              <input class="form-control" type="number" min="0.01" step="0.01" id="lance"/>
+            </div>
+            <div class="col-lg-1 mt-lg-0 mt-3">
+              <button class="btn btn-primary w-100" id="enviar">Enviar</button>
+            </div>
           </div>
-          <div class="col-lg-1 mt-lg-0 mt-3">
-            <button class="btn btn-primary w-100" id="enviar">Enviar</button>
-          </div>
-        </div>
+        </form>
       </div>
     </div>
   </main>
@@ -106,6 +108,7 @@
     const containerGanhador = qs('#container-ganhador')
     const inputLance = qs('#lance')
     const btnEnviar = qs('#enviar')
+    const formEnviar = qs('#form-enviar')
 
     let leilaoFinalizado = false
 
@@ -121,6 +124,7 @@
 
     const btnFinalizar = qs('#btn-finalizar-leilao')
 
+    // Carregamento inicial dos dados
     document.addEventListener('DOMContentLoaded', async () => {
       try {
         if (modo == 'dono') {
@@ -152,6 +156,12 @@
         })
         location.assign('/')
       }
+    })
+
+    formEnviar.addEventListener('submit', async ev => {
+      ev.preventDefault()
+      const lance = inputLance.value
+      console.log({nomeUusario, lance})
     })
 
     async function validarAcessoDono(codigo, token) {
@@ -208,6 +218,30 @@
           })
         }
       }
+    }
+
+    // WebSocket --------------------
+
+    // leilao.dono ou leilao.participante
+    const protocolo = `leilao.${modo}`
+
+    function enviar(ws, msg) {
+      ws.send(JSON.stringify(msg))
+    }
+
+    const ws = new WebSocket('ws://localhost:8080/leilao/ws', protocolo)
+    ws.onopen = ev => {
+      console.log('websocket: open', ev)
+      enviar(ws, {tipo: 'inscrever', leilao: codigoLeilao})
+    }
+    ws.onmessage = ev => {
+      console.log('websocket: message', ev.data)
+    }
+    ws.onclose = ev => {
+      console.log('websocket: close', ev)
+    }
+    ws.onerror = ev => {
+      console.log('websocket: error', ev)
     }
   </script>
 </body>

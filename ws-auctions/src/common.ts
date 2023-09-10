@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto"
 
-export type Result<T> =
-  | {ok: true, value: T}
+export type Result<T=null> =
+  | {ok: true, value?: T}
   | {ok: false, error: string}
 
 export function gerarTokenAleatorio() {
@@ -12,7 +12,7 @@ export function binIndex<T>(array: Array<T>, compare: (t: T) => number): number 
   let lo = 0
   let hi = array.length-1
   while (lo <= hi) {
-    const mid = lo + (hi - lo) / 2
+    const mid = Math.floor(lo + (hi - lo) / 2)
     const cmp = compare(array[mid])
     if      (cmp < 0) hi = mid - 1
     else if (cmp > 0) lo = mid + 1

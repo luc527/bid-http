@@ -1,4 +1,4 @@
-import { Result, binSearch, gerarTokenAleatorio } from "./common.js"
+import { Result, binIndex, binSearch, gerarTokenAleatorio } from "./common.js"
 
 export type CriarLeilaoDTO = {
   nomeUsuario: string,
@@ -6,30 +6,56 @@ export type CriarLeilaoDTO = {
   precoInicial: number,
 }
 
-type Lance = {
-  nomeUsuario: string,
-  preco: number,
-  feitoEm: Date,
+export type Lance = {
+  readonly nomeUsuario: string,
+  readonly preco: number,
+  readonly feitoEm: Date,
 }
 
 type Leilao = {
-  codigo: number,
-  nomeDono: string,
-  nomeItem: string,
-  precoInicial: number,
-  anunciadoEm: Date,
+  readonly codigo: number,
+  readonly nomeDono: string,
+  readonly nomeItem: string,
+  readonly precoInicial: number,
+  readonly anunciadoEm: Date,
   finalizado?: boolean,
 }
 
 type LeilaoFinalizado = Leilao & {
-  finalizadoEm: Date,
-  lanceGanhador: Lance | null,
+  readonly finalizadoEm: Date,
+}
+
+class Lances {
+  readonly leilao:       number
+  readonly precoInicial: number
+  readonly lances:       Lance[]
+
+  constructor(precoInicial: number, leilao: number) {
+    this.leilao = leilao
+    this.precoInicial = precoInicial
+    this.lances = []
+  }
+
+  adicionar(lance: Lance): Result {
+    const precoMaiorQue = this.lances.length == 0 ? this.precoInicial : this.lances.at(-1)?.preco ?? 0
+    if (lance.preco > precoMaiorQue) {
+      this.lances.push(lance)
+      return {ok: true}
+    } else {
+      return {ok: false, error: 'Todo lance deve ser maior que o lance anterior'}
+    }
+  }
+
+  ultimo(): Readonly<Lance | undefined> {
+    return this.lances.at(-1)
+  }
 }
 
 export default class Leiloes {
   #proximoCodigo: number = 1
-  #abertos: Array<Leilao> = []
-  #finalizados: Array<LeilaoFinalizado> = []
+  #abertos: Map<number, Leilao> = new Map()
+  #finalizados: Map<number, LeilaoFinalizado> = new Map()
+  #lances: Map<number, Lances> = new Map()
   #tokens: Map<number, string> = new Map()
 
   criar(dto: CriarLeilaoDTO): {codigo: number, token: string} {
@@ -43,7 +69,7 @@ export default class Leiloes {
       anunciadoEm: new Date()
     } as Leilao
 
-    this.#abertos.push(leilao)
+    this.#abertos.set(codigo, leilao)
 
     const token = gerarTokenAleatorio()
     this.#tokens.set(codigo, token)
@@ -52,14 +78,12 @@ export default class Leiloes {
   }
 
   find(codigo: number): Result<Readonly<Leilao>> {
-    const cmp = (leilao: Leilao) => codigo - leilao.codigo
-    let value: Leilao | null = null
-
-    if (value = binSearch(this.#abertos, cmp)) {
+    let value
+    if (value = this.#abertos.get(codigo)) {
       value.finalizado = false
       return {ok: true, value}
     }
-    else if (value = binSearch(this.#finalizados, cmp)) {
+    else if (value = this.#finalizados.get(codigo)) {
       value.finalizado = true
       return {ok: true, value}
     }
@@ -68,17 +92,38 @@ export default class Leiloes {
     }
   }
 
-  validar(codigo: number, token: string): boolean {
+  lances(codigo: number): Readonly<Lances | undefined> {
+    return this.#lances.get(codigo)
+  }
+
+  autenticar(codigo: number, token: string): boolean {
     return this.#tokens.has(codigo)
         && this.#tokens.get(codigo) == token
   }
 
   get abertos(): ReadonlyArray<Leilao> {
-    return this.#abertos
+    return Array.from(this.#abertos.values())
   }
 
   get finalizados(): ReadonlyArray<LeilaoFinalizado> {
-    return this.#finalizados
+    return Array.from(this.#finalizados.values())
+  }
+
+  finalizar(codigo: number, token: string): Result {
+    const leilaoAberto = this.#abertos.get(codigo)
+    if (leilaoAberto == null) {
+      return {ok: false, error: 'Leilão não encontrado, ou já foi finalizado'}
+    }
+    if (!this.autenticar(codigo, token)) {
+      return {ok: false, error: 'Somente o dono do leilão pode finalizá-lo'}
+    }
+    const leilaoFinalizado = {
+      ...leilaoAberto,
+      finalizadoEm: new Date(),
+    }
+    this.#abertos.delete(codigo)
+    this.#finalizados.set(codigo, leilaoFinalizado)
+    return {ok: true}
   }
 
   static parse(obj: any): Result<CriarLeilaoDTO> {
