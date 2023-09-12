@@ -1,11 +1,11 @@
 // Cliente WebSocket
 
 import { WebSocket } from "ws";
-import Leiloes, { Lance } from "./leiloes";
+import Leiloes, { Lance, Lances, Leilao } from "./leiloes";
 
-type MensagemRecebidaLance = { tipo: 'lance', leilao: number, usuario: string, lance: number }
+type MensagemRecebidaLance     = { tipo: 'lance', leilao: number, usuario: string, lance: number }
 type MensagemRecebidaFinalizar = { tipo: 'finalizar', leilao: number, token: string }
-type MensagemRecebidaInscrever = {tipo: 'inscrever', leilao: number}
+type MensagemRecebidaInscrever = { tipo: 'inscrever', leilao: number }
 
 type MensagemRecebida =
   | MensagemRecebidaLance
@@ -16,45 +16,67 @@ type Protocolo =
   | 'leilao.dono'
   | 'leilao.participante'
 
+type MensagemBroadcast =
+  | { tipo: 'lance',      leilao: number, lance: Readonly<Lance> }
+  | { tipo: 'finalizado', leilao: number, finalizadoEm: Date, lanceGanhador: Readonly<Lance | undefined> }
+
 type MensagemEnviar =
-  | { tipo: 'erro', erro: string }
+  | { tipo: 'erro',              leilao: number, erro: string }
+  | { tipo: 'erro-conexao',      erro: string }
   | { tipo: 'erro-interno' }
-  | { tipo: 'lance', lance: Readonly<Lance> }
-  | { tipo: 'finalizado', leilao: number, lanceGanhador: Readonly<Lance | undefined> }
+  | { tipo: 'lances-anteriores', leilao: number, lances: Array<Readonly<Lance>> }
+  | MensagemBroadcast
 
 
 class MessageHandlingError extends Error {
 }
 
 export class Clientes {
-  #leiloes: Leiloes
-  #clientes: Map<number, Set<Cliente>> = new Map()
+  leiloes: Leiloes
+  clientes: Map<number, Set<Cliente>> = new Map()
 
   // TODO ping periodico
 
   constructor(leiloes: Leiloes) {
-    this.#leiloes = leiloes
+    this.leiloes = leiloes
   }
 
   ativar(ws: WebSocket) {
-    new Cliente(this, this.#leiloes, ws)
+    new Cliente(this, this.leiloes, ws)
   }
 
-  inscrever(leilao: number, cli: Cliente): void {
-    if (!this.#clientes.has(leilao)) {
-      this.#clientes.set(leilao, new Set())
+  inscrever(codigoLeilao: number, cli: Cliente): void {
+    const leilao = this.leiloes.find(codigoLeilao)
+    if (!leilao) {
+      cli.enviar({tipo: 'erro', leilao: codigoLeilao, erro: 'Leilão não encontrado'})
+      return
     }
-    this.#clientes.get(leilao)?.add(cli)
+
+    if (!this.clientes.has(codigoLeilao)) {
+      this.clientes.set(codigoLeilao, new Set())
+    }
+    this.clientes.get(codigoLeilao)?.add(cli)
+
+    const lances = leilao.lances
+    cli.enviar({tipo: 'lances-anteriores', leilao: codigoLeilao, lances: lances.todos()})
+    if (leilao.finalizadoEm) {
+      cli.enviar({
+        tipo: 'finalizado',
+        leilao: codigoLeilao,
+        finalizadoEm: leilao.finalizadoEm,
+        lanceGanhador: lances.ultimo()
+      })
+    }
   }
 
-  broadcast(leilao: number, msg: MensagemEnviar) {
-    for (const cli of this.#clientes.get(leilao) ?? []) {
+  broadcast(msg: MensagemBroadcast) {
+    for (const cli of this.clientes.get(msg.leilao) ?? []) {
       cli.enviar(msg)
     }
   }
 
   remover(cli: Cliente) {
-    for (const clientes of this.#clientes.values()) {
+    for (const clientes of this.clientes.values()) {
       clientes.delete(cli)
     }
   }
@@ -75,7 +97,7 @@ class Cliente {
     if (ws.protocol == 'leilao.dono' || ws.protocol == 'leilao.participante') {
       this.protocolo = ws.protocol
     } else {
-      this.enviar({tipo: 'erro', erro: 'Protocolo inválido'})
+      this.enviar({tipo: 'erro-conexao', erro: 'Protocolo inválido'})
       ws.close()
       throw new Error('Protocolo inválido')
     }
@@ -83,16 +105,20 @@ class Cliente {
     ws.on('message', buf => {
       try {
         const data = buf.toString()
-        console.log(`Mensagem crua: ${data}`)
+        console.log('Mensagem crua')
+        console.log(data)
         const msg = this.parse(data)
-        console.log('Mensagem parseada', msg)
+        console.log('Mensagem parseada')
+        console.log(msg)
         this.receber(msg)
       } catch (error) {
         if (error instanceof MessageHandlingError) {
-          console.log('MessageHandlingError', error)
-          this.enviar({tipo: 'erro', erro: `Mensagem inválida: ${error.message}`})
+          console.log('MessageHandlingError')
+          console.log(error)
+          this.enviar({tipo: 'erro-conexao', erro: `Erro: ${error.message}`})
         } else {
-          console.error(`Erro interno: ${error}`)
+          console.log('Erro interno')
+          console.log(error)
           this.enviar({tipo: 'erro-interno'})
         }
       }
@@ -175,17 +201,16 @@ class Cliente {
     if (this.protocolo != 'leilao.participante') {
       throw new MessageHandlingError('Somente participantes do leilão podem enviar lances')
     }
-    const lances = this.leiloes.lances(msg.leilao)
-    if (lances == null) {
-      throw new MessageHandlingError('Leilão não encontrado')
+    const result = this.leiloes.realizarLance(msg.leilao, msg.usuario, msg.lance)
+    if (!result.ok) {
+      throw new MessageHandlingError(result.error)
     }
-    const lance = {nomeUsuario: msg.usuario, preco: msg.lance, feitoEm: new Date()}
-    const resultAdicionar = lances.adicionar(lance)
-    if (resultAdicionar.ok) {
-      this.clientes.broadcast(msg.leilao, {tipo: 'lance', lance})
-    } else {
-      throw new MessageHandlingError(resultAdicionar.error)
-    }
+
+    this.clientes.broadcast({
+      tipo: 'lance',
+      leilao: msg.leilao,
+      lance: result.value as Lance
+    })
   }
 
   receberFinalizar(msg: MensagemRecebidaFinalizar): void {
@@ -196,9 +221,15 @@ class Cliente {
     if (!result.ok) {
       throw new MessageHandlingError(result.error)
     }
-    const lances = this.leiloes.lances(msg.leilao)
-    const lanceGanhador = lances?.ultimo()
-    this.clientes.broadcast(msg.leilao, {tipo: 'finalizado', leilao: msg.leilao, lanceGanhador})
+    const leilao = this.leiloes.find(msg.leilao) as Leilao
+    const lanceGanhador = leilao.lances.ultimo()
+
+    this.clientes.broadcast({
+      tipo: 'finalizado',
+      leilao: msg.leilao,
+      lanceGanhador,
+      finalizadoEm: leilao.finalizadoEm as Date
+    })
   }
 
   receberInscrever(msg: MensagemRecebidaInscrever): void {

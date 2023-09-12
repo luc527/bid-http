@@ -1,4 +1,4 @@
-const gHost = `http://localhost:8080`
+const gHost = `http://localhost:9001`
 
 const gFormatReais = new Intl.NumberFormat('pt-BR', {
   style: 'currency',

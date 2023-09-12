@@ -1,4 +1,4 @@
-import { Result, binIndex, binSearch, gerarTokenAleatorio } from "./common.js"
+import { Result, gerarTokenAleatorio } from "./common.js"
 
 export type CriarLeilaoDTO = {
   nomeUsuario: string,
@@ -12,20 +12,17 @@ export type Lance = {
   readonly feitoEm: Date,
 }
 
-type Leilao = {
+export type Leilao = {
   readonly codigo: number,
   readonly nomeDono: string,
   readonly nomeItem: string,
   readonly precoInicial: number,
   readonly anunciadoEm: Date,
-  finalizado?: boolean,
+  readonly lances: Lances,
+  readonly finalizadoEm?: Date
 }
 
-type LeilaoFinalizado = Leilao & {
-  readonly finalizadoEm: Date,
-}
-
-class Lances {
+export class Lances {
   readonly leilao:       number
   readonly precoInicial: number
   readonly lances:       Lance[]
@@ -49,14 +46,17 @@ class Lances {
   ultimo(): Readonly<Lance | undefined> {
     return this.lances.at(-1)
   }
+
+  todos(): Array<Readonly<Lance>> {
+    return this.lances
+  }
 }
 
 export default class Leiloes {
-  #proximoCodigo: number = 1
-  #abertos: Map<number, Leilao> = new Map()
-  #finalizados: Map<number, LeilaoFinalizado> = new Map()
-  #lances: Map<number, Lances> = new Map()
-  #tokens: Map<number, string> = new Map()
+  #proximoCodigo:          number              = 1
+  readonly #abertos:       Map<number, Leilao> = new Map()
+  readonly #finalizados:   Map<number, Leilao> = new Map()
+  readonly #tokens:        Map<number, string> = new Map()
 
   criar(dto: CriarLeilaoDTO): {codigo: number, token: string} {
     const codigo = this.#proximoCodigo++
@@ -66,7 +66,8 @@ export default class Leiloes {
       nomeDono: dto.nomeUsuario,
       nomeItem: dto.nomeItem,
       precoInicial: dto.precoInicial,
-      anunciadoEm: new Date()
+      anunciadoEm: new Date(),
+      lances: new Lances(dto.precoInicial, codigo),
     } as Leilao
 
     this.#abertos.set(codigo, leilao)
@@ -77,23 +78,9 @@ export default class Leiloes {
     return {codigo, token}
   }
 
-  find(codigo: number): Result<Readonly<Leilao>> {
-    let value
-    if (value = this.#abertos.get(codigo)) {
-      value.finalizado = false
-      return {ok: true, value}
-    }
-    else if (value = this.#finalizados.get(codigo)) {
-      value.finalizado = true
-      return {ok: true, value}
-    }
-    else {
-      return {ok: false, error: 'Leilão não encontrado'}
-    }
-  }
-
-  lances(codigo: number): Readonly<Lances | undefined> {
-    return this.#lances.get(codigo)
+  find(codigo: number): Readonly<Leilao | undefined> {
+    return this.#abertos.get(codigo)
+        || this.#finalizados.get(codigo)
   }
 
   autenticar(codigo: number, token: string): boolean {
@@ -105,7 +92,7 @@ export default class Leiloes {
     return Array.from(this.#abertos.values())
   }
 
-  get finalizados(): ReadonlyArray<LeilaoFinalizado> {
+  get finalizados(): ReadonlyArray<Leilao> {
     return Array.from(this.#finalizados.values())
   }
 
@@ -124,6 +111,24 @@ export default class Leiloes {
     this.#abertos.delete(codigo)
     this.#finalizados.set(codigo, leilaoFinalizado)
     return {ok: true}
+  }
+
+  realizarLance(codigoLeilao: number, nomeUsuario: string, preco: number): Result<Lance> {
+    const leilao = this.find(codigoLeilao)
+    if (!leilao) {
+      return {ok: false, error: 'Leilão não encontrado'}
+    }
+    if (leilao.finalizadoEm) {
+      return {ok: false, error: 'Leilão já foi finalizado'}
+    }
+    const lances = leilao.lances
+    const lance = {nomeUsuario, preco, feitoEm: new Date()}
+    const result = lances.adicionar(lance)
+    if (result.ok) {
+      return {ok: true, value: lance}
+    } else {
+      return result
+    }
   }
 
   static parse(obj: any): Result<CriarLeilaoDTO> {

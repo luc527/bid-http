@@ -52,10 +52,10 @@ app.get('/leilao/:codigo', (req, res) => {
     return
   }
   const leilao = gLeiloes.find(codigo)
-  if (leilao.ok) {
-    res.status(200).json(leilao.value)
+  if (leilao) {
+    res.status(200).json(leilao)
   } else {
-    res.status(404).json({error: leilao.error})
+    res.status(404).json({error: 'Leilão não encontrado'})
   }
 })
 
@@ -71,7 +71,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 })
 
 
-const port = 8080
+const port = 9001
 const server = app.listen(port, () => {
   console.log('Servidor rodando na porta ' + port)
 })
@@ -89,25 +89,3 @@ wss.on('error', error => {
 wss.on('connection', ws => {
   gClientes.ativar(ws)
 })
-
-/*
-const protocol = ws.protocol
-if (protocol == 'leilao.participante') {
-  const {codigoLeilao, nomeUsuario} = await receberMensagem(ws)
-  const rLeilao = gLeiloes.find(codigoLeilao)
-  if (!rLeilao.ok) {
-    ws.send(<erro: leilão não existe>)
-    ws.close()
-  } else {
-    let fechar = false
-    while (!fechar) {
-      const preco = await receberPreco(ws)
-    }
-    ws.close()
-  }
-}
-else if (protocol == 'leilao.dono') {
-
-}
-
-*/
