@@ -33,3 +33,9 @@ function toggle(e, b) {
   if (b) show(e)
   else hide(e)
 }
+
+function esvaziar(e) {
+  while (e.firstChild) {
+    e.lastChild.remove()
+  }
+}

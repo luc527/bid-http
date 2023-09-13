@@ -1,7 +1,8 @@
 // Cliente WebSocket
 
 import { WebSocket } from "ws";
-import Leiloes, { Lance, Lances, Leilao } from "./leiloes";
+import Leiloes, { Lance, Leilao } from "./leiloes";
+import { randomBytes } from "crypto";
 
 type MensagemRecebidaLance     = { tipo: 'lance', leilao: number, usuario: string, lance: number }
 type MensagemRecebidaFinalizar = { tipo: 'finalizar', leilao: number, token: string }
@@ -31,24 +32,29 @@ type MensagemEnviar =
 class MessageHandlingError extends Error {
 }
 
+const segundoMs = 1000
+
 export class Clientes {
   leiloes: Leiloes
   clientes: Map<number, Set<Cliente>> = new Map()
-
-  // TODO ping periodico
+  pingando: boolean = false
 
   constructor(leiloes: Leiloes) {
     this.leiloes = leiloes
   }
 
-  ativar(ws: WebSocket) {
-    new Cliente(this, this.leiloes, ws)
+  ativar(ws: WebSocket): Cliente | undefined {
+    return Cliente.criar(this, this.leiloes, ws)
   }
 
   inscrever(codigoLeilao: number, cli: Cliente): void {
     const leilao = this.leiloes.find(codigoLeilao)
     if (!leilao) {
-      cli.enviar({tipo: 'erro', leilao: codigoLeilao, erro: 'Leilão não encontrado'})
+      cli.enviar({
+        tipo:   'erro',
+        leilao: codigoLeilao,
+        erro:   'Leilão não encontrado'
+      })
       return
     }
 
@@ -58,7 +64,11 @@ export class Clientes {
     this.clientes.get(codigoLeilao)?.add(cli)
 
     const lances = leilao.lances
-    cli.enviar({tipo: 'lances-anteriores', leilao: codigoLeilao, lances: lances.todos()})
+    cli.enviar({
+      tipo:  'lances-anteriores',
+      leilao: codigoLeilao,
+      lances: lances.todos()
+    })
     if (leilao.finalizadoEm) {
       cli.enviar({
         tipo: 'finalizado',
@@ -80,45 +90,44 @@ export class Clientes {
       clientes.delete(cli)
     }
   }
+
+  pingCliente(cli: Cliente) {
+  }
+
 }
 
 
 class Cliente {
-  clientes:  Clientes
-  leiloes:   Leiloes
-  ws:        WebSocket
-  protocolo: Protocolo
+  clientes:     Clientes
+  leiloes:      Leiloes
+  ws:           WebSocket
+  protocolo:    Protocolo
+  pingInterval: NodeJS.Timeout
 
-  constructor(clientes: Clientes, leiloes: Leiloes, ws: WebSocket) {
-    this.clientes = clientes
-    this.leiloes = leiloes
-    this.ws = ws
-
+  static criar(clientes: Clientes, leiloes: Leiloes, ws: WebSocket): Cliente | undefined {
     if (ws.protocol == 'leilao.dono' || ws.protocol == 'leilao.participante') {
-      this.protocolo = ws.protocol
+      return new Cliente(clientes, leiloes, ws, ws.protocol)
     } else {
-      this.enviar({tipo: 'erro-conexao', erro: 'Protocolo inválido'})
+      ws.send(JSON.stringify({tipo: 'erro-conexao', erro: 'Protocolo inválido'}))
       ws.close()
       throw new Error('Protocolo inválido')
     }
 
+  }
+
+  constructor(clientes: Clientes, leiloes: Leiloes, ws: WebSocket, protocolo: Protocolo) {
+    this.clientes  = clientes
+    this.leiloes   = leiloes
+    this.ws        = ws
+    this.protocolo = protocolo
+
     ws.on('message', buf => {
       try {
-        const data = buf.toString()
-        console.log('Mensagem crua')
-        console.log(data)
-        const msg = this.parse(data)
-        console.log('Mensagem parseada')
-        console.log(msg)
-        this.receber(msg)
+        this.receber(this.parse(buf.toString()))
       } catch (error) {
         if (error instanceof MessageHandlingError) {
-          console.log('MessageHandlingError')
-          console.log(error)
           this.enviar({tipo: 'erro-conexao', erro: `Erro: ${error.message}`})
         } else {
-          console.log('Erro interno')
-          console.log(error)
           this.enviar({tipo: 'erro-interno'})
         }
       }
@@ -128,6 +137,8 @@ class Cliente {
       console.log('Conexão fechada')
       this.clientes.remover(this)
     })
+
+    this.pingInterval = setInterval(() => this.ping(), 60 * segundoMs)
   }
 
   parse(data: string): MensagemRecebida {
@@ -238,5 +249,31 @@ class Cliente {
 
   enviar(msg: MensagemEnviar): void {
     this.ws.send(JSON.stringify(msg))
+  }
+
+  ping() {
+    const ws = this.ws
+    if (ws.readyState != WebSocket.OPEN) {
+      return
+    }
+    ws.ping()
+
+    const id = randomBytes(8).toString('hex')
+    console.log(id, 'ping')
+
+    const timeout = setTimeout(() => {
+      console.log(id, 'timeout')
+      ws.close()
+      this.clientes.remover(this)
+      clearInterval(this.pingInterval)
+    }, 30 * segundoMs)
+
+    const callback = () => {
+      console.log(id, 'pong')
+      clearTimeout(timeout)
+      ws.off('pong', callback)
+    }
+    ws.on('pong', callback)
+
   }
 }

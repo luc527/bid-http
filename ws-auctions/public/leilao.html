@@ -101,79 +101,19 @@
     const params = new URL(location).searchParams
 
     const codigoLeilao = Number(params.get('codigo_leilao'))
-    const nomeUsuario = params.get('nome_usuario')
-    const modo = params.get('modo')
+    const nomeUsuario  = params.get('nome_usuario')
+    const modo         = params.get('modo')
+    const protocolo    = `leilao.${modo}`
 
-    // WebSocket --------------------
-
-    // TODO lidar com reconexão
-    // ao reconectar e inscrever novamente, tem que remover tudo da lista de lances, pq senao vai ficar duplicado qdo receber os anteriores
-
-    // TODO mostrar preço inicial 
-
-    // TODO destacar com bg diferente os lances que o próprio usuário fez
-
-    // TODO opção para desfazer um lance 
-    // para isso seria necessário gerar um token pro lance, pra 1. identificar e 2. autenticar que o usuário enviando a ação de remover é o mesmo que criou o lance
-
-    // leilao.dono ou leilao.participante
-    const protocolo = `leilao.${modo}`
-
-    function enviar(ws, msg) {
-      ws.send(JSON.stringify(msg))
-    }
-
-    const ws = new WebSocket('ws://localhost:9001/leilao/ws', protocolo)
-    ws.onopen = ev => {
-      console.log('websocket: open', ev)
-      enviar(ws, {tipo: 'inscrever', leilao: codigoLeilao})
-    }
-    ws.onmessage = ev => {
-      console.log('websocket: message', ev.data)
-      const msg = JSON.parse(ev.data)
-      if (msg.tipo == 'erro-conexao') {
-        Toast.fire({icon: 'error', text: msg.erro})
-        return
-      }
-      if (msg.leilao != codigoLeilao) {
-        return
-      }
-      if (msg.tipo == 'erro-interno') {
-        Toast.fire({icon: 'error', text: 'Erro interno'})
-      } else if (msg.tipo == 'erro') {
-        Toast.fire({icon: 'error', text: msg.erro})
-      } else if (msg.tipo == 'lances-anteriores') {
-        for (const lance of msg.lances) {
-          handleLance(lance.nomeUsuario, lance.preco, lance.feitoEm)
-        }
-      } else if (msg.tipo == 'lance') {
-        const lance = msg.lance
-        handleLance(lance.nomeUsuario, lance.preco, lance.feitoEm)
-      } else if (msg.tipo == 'finalizado') {
-        const lanceGanhador = msg.lanceGanhador
-        handleLeilaoFinalizado(lanceGanhador?.nomeUsuario, lanceGanhador?.preco, msg.finalizadoEm)
-        ws.close()
-      }
-    }
-    ws.onclose = ev => {
-      console.log('websocket: close', ev)
-    }
-    ws.onerror = ev => {
-      console.log('websocket: error', ev)
-    }
-
-    // ------------------------------
-
-    const tmplLance = qs('#tmpl-lance')
-    const containerLances = qs('#container-lances')
+    const tmplLance         = qs('#tmpl-lance')
+    const containerLances   = qs('#container-lances')
     const containerGanhador = qs('#container-ganhador')
-    const inputLance = qs('#lance')
-    const btnEnviar = qs('#enviar')
-    const formEnviar = qs('#form-enviar')
+    const inputLance        = qs('#lance')
+    const btnEnviar         = qs('#enviar')
+    const formEnviar        = qs('#form-enviar')
+    const btnFinalizar      = qs('#btn-finalizar-leilao')
 
-    let leilaoFinalizado = false
-
-    hide(containerGanhador)
+    let leilao = null
 
     if (modo != 'dono' && modo != 'participante') {
       agendarAlerta({
@@ -183,10 +123,7 @@
       location.assign('/')
     }
 
-    const btnFinalizar = qs('#btn-finalizar-leilao')
-
-    // Carregamento inicial dos dados
-    document.addEventListener('DOMContentLoaded', async () => {
+    (async () => {
       try {
         if (modo == 'dono') {
           const token = sessionStorage.getItem(chaveTokenLeilao(codigoLeilao))
@@ -196,10 +133,10 @@
           }
         }
 
-        const leilao = await getLeilao(codigoLeilao)
+        leilao = await getLeilao(codigoLeilao)
 
-        qs('#nome_item').value = leilao.nomeItem
-        qs('#dono').value = leilao.nomeDono
+        qs('#nome_item').value    = leilao.nomeItem
+        qs('#dono').value         = leilao.nomeDono
         qs('#anunciado_em').value = new Date(leilao.anunciadoEm).toLocaleString()
 
         toggle(btnFinalizar.parentNode, modo == 'dono')
@@ -210,6 +147,11 @@
           handleLeilaoFinalizado(ganhador.nomeUsuario, ganhador.preco, leilao.finalizadoEm)
         }
 
+        hide(containerGanhador)
+
+        fazerLanceInicial()
+        conectar(protocolo)
+
       } catch (error) {
         agendarAlerta({
           icon: 'error',
@@ -217,12 +159,12 @@
         })
         location.assign('/')
       }
-    })
+    })()
 
     formEnviar.addEventListener('submit', ev => {
       ev.preventDefault()
       const lance = Number(inputLance.value)
-      enviar(ws, {
+      enviar({
         tipo: 'lance',
         leilao: codigoLeilao,
         usuario: nomeUsuario,
@@ -233,12 +175,102 @@
     btnFinalizar.addEventListener('click', ev => {
       ev.preventDefault()
       const token = sessionStorage.getItem(chaveTokenLeilao(codigoLeilao))
-      enviar(ws, {
+      enviar({
         tipo: 'finalizar',
         leilao: codigoLeilao,
         token,
       })
     })
+
+    // WebSocket --------------------
+
+    let webSocketAtual = null
+
+    const mensagensPendentes = []
+
+    function enviar(msg) {
+      const ws = webSocketAtual
+      if (ws?.readyState == WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg))
+      } else {
+        mensagensPendentes.push(msg)
+        Toast.fire({
+          icon: 'info',
+          text: 'Sua conexão caiu, mas vamos enviar o lance assim que possível!',
+        })
+      }
+    }
+
+    function reconectar() {
+      console.log('conexão caiu, reconectando...')
+      webSocketAtual = null
+      setTimeout(() => {
+        esvaziar(containerLances)
+        fazerLanceInicial()
+        conectar(protocolo)
+        console.log('reconectou!')
+      }, 2000)
+    }
+
+    function fazerLanceInicial() {
+      if (leilao) {
+        handleLance('Lance inicial', leilao.precoInicial, leilao.anunciadoEm)
+      }
+    }
+
+    function conectar(protocolo) {
+      const ws = new WebSocket('ws://localhost:9001/leilao/ws', protocolo)
+
+      ws.onopen = ev => {
+        console.log('websocket: open', ev)
+        enviar({tipo: 'inscrever', leilao: codigoLeilao})
+        while (mensagensPendentes.length) {
+          enviar(mensagensPendentes.shift())
+        }
+      }
+
+      ws.onmessage = ev => {
+        console.log('websocket: message', ev.data)
+        const msg = JSON.parse(ev.data)
+        if (msg.tipo == 'erro-conexao') {
+          Toast.fire({icon: 'error', text: msg.erro})
+          return
+        }
+        if (msg.leilao != codigoLeilao) {
+          return
+        }
+        if (msg.tipo == 'erro-interno') {
+          Toast.fire({icon: 'error', text: 'Erro interno'})
+        } else if (msg.tipo == 'erro') {
+          Toast.fire({icon: 'error', text: msg.erro})
+        } else if (msg.tipo == 'lances-anteriores') {
+          for (const lance of msg.lances) {
+            handleLance(lance.nomeUsuario, lance.preco, lance.feitoEm)
+          }
+        } else if (msg.tipo == 'lance') {
+          const lance = msg.lance
+          handleLance(lance.nomeUsuario, lance.preco, lance.feitoEm)
+        } else if (msg.tipo == 'finalizado') {
+          const lanceGanhador = msg.lanceGanhador
+          handleLeilaoFinalizado(lanceGanhador?.nomeUsuario, lanceGanhador?.preco, msg.finalizadoEm)
+          ws.close()
+        }
+      }
+
+      ws.onclose = ev => {
+        console.log('websocket: close', ev)
+      }
+
+      ws.onerror = ev => {
+        console.log('websocket: error', ev)
+        reconectar()
+      }
+
+      webSocketAtual = ws
+    }
+
+
+    // ------------------------------
 
     async function validarAcessoDono(codigo, token) {
       const response = await fetch(`${gHost}/leilao/${codigo}/validar?token=${encodeURIComponent(token)}`)
@@ -268,9 +300,6 @@
     }
 
     function handleLeilaoFinalizado(nomeGanhador, lanceGanhador, finalizadoEm=null) {
-      if (leilaoFinalizado) return;
-      leilaoFinalizado = true
-
       inputLance.setAttribute('readonly', '')
       inputLance.setAttribute('disabled', '')
       btnEnviar.setAttribute('disabled', '')
