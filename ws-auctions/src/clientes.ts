@@ -17,16 +17,16 @@ type Protocolo =
   | 'leilao.dono'
   | 'leilao.participante'
 
-type MensagemBroadcast =
-  | { tipo: 'lance',      leilao: number, lance: Readonly<Lance> }
-  | { tipo: 'finalizado', leilao: number, finalizadoEm: Date, lanceGanhador: Readonly<Lance | undefined> }
-
 type MensagemEnviar =
   | { tipo: 'erro',              leilao: number, erro: string }
   | { tipo: 'erro-conexao',      erro: string }
   | { tipo: 'erro-interno' }
   | { tipo: 'lances-anteriores', leilao: number, lances: Array<Readonly<Lance>> }
   | MensagemBroadcast
+
+type MensagemBroadcast =
+  | { tipo: 'lance',      leilao: number, lance: Readonly<Lance> }
+  | { tipo: 'finalizado', leilao: number, finalizadoEm: Date, lanceGanhador: Readonly<Lance | undefined> }
 
 
 class MessageHandlingError extends Error {
@@ -91,9 +91,6 @@ export class Clientes {
     }
   }
 
-  pingCliente(cli: Cliente) {
-  }
-
 }
 
 
@@ -133,12 +130,13 @@ class Cliente {
       }
     })
 
+    this.pingInterval = setInterval(() => this.ping(), 60 * segundoMs)
+
     ws.on('close', () => {
       console.log('Conexão fechada')
+      clearInterval(this.pingInterval)
       this.clientes.remover(this)
     })
-
-    this.pingInterval = setInterval(() => this.ping(), 60 * segundoMs)
   }
 
   parse(data: string): MensagemRecebida {
