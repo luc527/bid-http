@@ -203,6 +203,7 @@
 
     function reconectar() {
       console.log('conexão caiu, reconectando...')
+      webSocketAtual.close()
       webSocketAtual = null
       setTimeout(() => {
         esvaziar(containerLances)
