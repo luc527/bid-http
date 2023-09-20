@@ -4,7 +4,6 @@ O sistema de exemplo é um site para leilões
 
 ## Requisitos funcionais
 - Anunciar um item, criando um _leilão_
-- Se inscrever em _tags_ para receber notificações itens anunciados de seu interesse
 - Participar do leilão de um item
 - Fazerem _lances_ a um item
 - Finalizar o leilão
@@ -15,7 +14,6 @@ O sistema de exemplo é um site para leilões
 - Somente o usuário que criou o leilão pode finalizar o leilão
 
 ## Requisitos não funcionais
-- As notificações de itens anunciados devem ser recebidas em tempo real
 - Ao participar do leilão de um item, o usuário deve receber os lances em tempo real
 - Os lances também devem ser transmitidos em tempo real
 - Não precisa de armazenamento persistente, pode ficar tudo em memória

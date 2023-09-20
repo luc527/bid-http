@@ -37,7 +37,6 @@ const segundoMs = 1000
 export class Clientes {
   leiloes: Leiloes
   clientes: Map<number, Set<Cliente>> = new Map()
-  pingando: boolean = false
 
   constructor(leiloes: Leiloes) {
     this.leiloes = leiloes
