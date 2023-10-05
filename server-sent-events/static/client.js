@@ -1,8 +1,6 @@
 const templateItem = document.querySelector('#tmpl-item-feed')
 const containerItens = document.querySelector('main')
 
-// TODO checkbox para acompanhar ou não os eventos
-
 const iconeReacao = {
     'curtir': 'bi-hand-thumbs-up',
     'amei':   'bi-heart',

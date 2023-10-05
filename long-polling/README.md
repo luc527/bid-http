@@ -1,5 +1,8 @@
 # Exemplo de long polling
 
+Para rodar:
+`node server.js`
+
 ## Requisitos
 
 - Todo usuário é identificado por um apelido

@@ -1,6 +1,9 @@
 # Exemplo de WebSocket
 
-O sistema de exemplo é um site para leilões
+O sistema de exemplo é um site para leilões.
+
+Para rodar:
+`npx tsc && node dist/index.js`
 
 ## Requisitos funcionais
 - Anunciar um item, criando um _leilão_
